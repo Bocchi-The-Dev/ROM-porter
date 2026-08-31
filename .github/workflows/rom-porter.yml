@@ -1,0 +1,128 @@
+name: Unisoc ROM Port
+
+# Requires these binaries committed in the repo under bin/ (chmod +x is handled in-workflow):
+#   bin/pacextractor   - unpacks .pac firmware -> raw partition images
+#   bin/lpunpack       - unpacks super.img -> per-partition raw images
+#   bin/lpmake         - rebuilds a super.img from per-partition raw images
+#   bin/lpdump         - reads super.img metadata (used to size the rebuilt super.img)
+# All four are the ones MIO-KITCHEN / AOSP host tools bundle internally.
+# erofs-utils (mkfs.erofs / fsck.erofs) is installed via apt at runtime, no need to commit it.
+
+on:
+  workflow_dispatch:
+    inputs:
+      stock_rom_url:
+        description: "Direct download URL for STOCK firmware (.pac, super.img, or super.bin)"
+        required: true
+        type: string
+      target_rom_url:
+        description: "Direct download URL for TARGET/donor firmware (.pac, super.img, or super.bin)"
+        required: true
+        type: string
+      device_codenames:
+        description: "Comma-separated init script codenames, e.g. P671L,P671LN (used for init.ums9230_<codename>.rc)"
+        required: true
+        type: string
+      partition_type:
+        description: "Super partition layout of your device"
+        required: true
+        type: choice
+        options:
+          - virtual-ab
+          - ab
+          - a-only
+        default: virtual-ab
+      patch_transsion_anticrack:
+        description: "Remove Transsion anti-crack block + force SELinux permissive (Itel/Infinix/Techno only)"
+        required: true
+        type: boolean
+        default: true
+      sparse_output:
+        description: "Sparse-compress the final super.img"
+        required: true
+        type: boolean
+        default: true
+
+jobs:
+  port:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Free up disk space (super.img work needs several GB of headroom)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          sudo docker image prune -a -f || true
+          df -h
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y erofs-utils e2fsprogs python3 unzip curl xxd
+
+      - name: Prepare binaries
+        run: |
+          chmod +x bin/pacextractor bin/lpunpack bin/lpmake bin/lpdump
+          mkdir -p work/stock_raw work/target_raw work/stock_unpacked work/target_unpacked work/result work/logs
+
+      - name: Download stock firmware
+        run: |
+          scripts/download_input.sh "${{ inputs.stock_rom_url }}" work/stock_raw
+
+      - name: Download target firmware
+        run: |
+          scripts/download_input.sh "${{ inputs.target_rom_url }}" work/target_raw
+
+      - name: Extract stock -> super.img
+        run: |
+          scripts/get_super.sh work/stock_raw work/stock_super
+
+      - name: Extract target -> super.img
+        run: |
+          scripts/get_super.sh work/target_raw work/target_super
+
+      - name: lpunpack stock super.img
+        run: |
+          bin/lpunpack work/stock_super/super.img work/stock_unpacked
+          ls -la work/stock_unpacked
+
+      - name: lpunpack target super.img
+        run: |
+          bin/lpunpack work/target_super/super.img work/target_unpacked
+          ls -la work/target_unpacked
+
+      - name: Assemble Result Port Rom raw partitions
+        run: |
+          scripts/assemble_partitions.sh work/stock_unpacked work/target_unpacked work/result
+
+      - name: Patch system + vendor (build.prop, SELinux, anti-crack)
+        run: |
+          scripts/patch_rom.sh \
+            --result-dir work/result \
+            --target-unpacked work/target_unpacked \
+            --device-codenames "${{ inputs.device_codenames }}" \
+            --transsion-anticrack "${{ inputs.patch_transsion_anticrack }}"
+
+      - name: Rebuild super.img
+        run: |
+          SPARSE_FLAG=""
+          if [ "${{ inputs.sparse_output }}" = "true" ]; then
+            SPARSE_FLAG="--sparse"
+          fi
+          python3 scripts/build_super.py \
+            --stock-super work/stock_super/super.img \
+            --result-dir work/result \
+            --partition-type "${{ inputs.partition_type }}" \
+            --output work/final_super.img \
+            $SPARSE_FLAG
+
+      - name: Upload super.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: ported-super-img
+          path: |
+            work/final_super.img
+            work/logs/**
+          if-no-files-found: error
+          retention-days: 14

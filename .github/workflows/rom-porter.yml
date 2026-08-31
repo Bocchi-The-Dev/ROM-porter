@@ -12,13 +12,33 @@ on:
   workflow_dispatch:
     inputs:
       stock_rom_url:
-        description: "Direct download URL for STOCK firmware (.pac, super.img, or super.bin)"
+        description: "Direct download URL for STOCK firmware (type declared below)"
         required: true
         type: string
+      stock_rom_type:
+        description: "What stock_rom_url points to"
+        required: true
+        type: choice
+        options:
+          - super.img
+          - super.bin
+          - pac
+          - pac.zip
+        default: pac
       target_rom_url:
-        description: "Direct download URL for TARGET/donor firmware (.pac, super.img, or super.bin)"
+        description: "Direct download URL for TARGET/donor firmware (type declared below)"
         required: true
         type: string
+      target_rom_type:
+        description: "What target_rom_url points to"
+        required: true
+        type: choice
+        options:
+          - super.img
+          - super.bin
+          - pac
+          - pac.zip
+        default: pac
       device_codenames:
         description: "Comma-separated init script codenames, e.g. P671L,P671LN (used for init.ums9230_<codename>.rc)"
         required: true
@@ -68,19 +88,19 @@ jobs:
 
       - name: Download stock firmware
         run: |
-          scripts/download_input.sh "${{ inputs.stock_rom_url }}" work/stock_raw
+          scripts/download_input.sh "${{ inputs.stock_rom_url }}" work/stock_raw "${{ inputs.stock_rom_type }}"
 
       - name: Download target firmware
         run: |
-          scripts/download_input.sh "${{ inputs.target_rom_url }}" work/target_raw
+          scripts/download_input.sh "${{ inputs.target_rom_url }}" work/target_raw "${{ inputs.target_rom_type }}"
 
       - name: Extract stock -> super.img
         run: |
-          scripts/get_super.sh work/stock_raw work/stock_super
+          scripts/get_super.sh work/stock_raw work/stock_super "${{ inputs.stock_rom_type }}"
 
       - name: Extract target -> super.img
         run: |
-          scripts/get_super.sh work/target_raw work/target_super
+          scripts/get_super.sh work/target_raw work/target_super "${{ inputs.target_rom_type }}"
 
       - name: lpunpack stock super.img
         run: |

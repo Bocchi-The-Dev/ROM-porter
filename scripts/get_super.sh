@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# get_super.sh <raw_input_dir> <out_dir>
-# raw_input_dir must contain exactly one file: input.pac OR input.img OR input.bin
+# get_super.sh <raw_input_dir> <out_dir> <type>
+# type is one of: super.img | super.bin | pac | pac.zip
 # Writes out_dir/super.img
 set -euo pipefail
 
 RAW_DIR="$1"
 OUT_DIR="$2"
+TYPE="$3"
 mkdir -p "$OUT_DIR"
 
 INPUT_FILE="$(find "$RAW_DIR" -maxdepth 1 -type f -name 'input.*' | head -n1)"
@@ -14,38 +15,61 @@ if [ -z "$INPUT_FILE" ]; then
   exit 1
 fi
 
-case "$INPUT_FILE" in
-  *.pac)
-    echo "Input is a .pac — running pacextractor"
-    PAC_WORKDIR="$(mktemp -d)"
-    cp "$INPUT_FILE" "$PAC_WORKDIR/"
-    PAC_NAME="$(basename "$INPUT_FILE")"
+run_pacextractor() {
+  local pac_file="$1"
+  local pac_workdir
+  pac_workdir="$(mktemp -d)"
+  cp "$pac_file" "$pac_workdir/"
+  local pac_name
+  pac_name="$(basename "$pac_file")"
 
-    # pacextractor is invoked from its own directory (./pacextractor file.pac) per your usage note.
-    # We run it from a temp workdir and search both ./output/ next to the binary AND next to the .pac,
-    # since different builds of pacextractor drop output in different places.
-    BIN_ABS="$(realpath bin/pacextractor)"
-    (cd "$PAC_WORKDIR" && "$BIN_ABS" "$PAC_NAME")
+  # pacextractor is invoked from its own directory (./pacextractor file.pac) per your usage note.
+  # We search both next to the binary AND next to the .pac for its output, since different
+  # builds drop output in different places.
+  local bin_abs
+  bin_abs="$(realpath bin/pacextractor)"
+  (cd "$pac_workdir" && "$bin_abs" "$pac_name")
 
-    FOUND="$(find "$PAC_WORKDIR" "$(dirname "$BIN_ABS")" -maxdepth 3 -type f \( -iname 'super.img' -o -iname 'super.bin' \) 2>/dev/null | head -n1)"
-    if [ -z "$FOUND" ]; then
-      echo "ERROR: pacextractor ran but no super.img/super.bin was found."
-      echo "Searched under: $PAC_WORKDIR and $(dirname "$BIN_ABS")"
-      echo "Full extracted listing for debugging:"
-      find "$PAC_WORKDIR" "$(dirname "$BIN_ABS")" -maxdepth 3
-      exit 1
-    fi
-    echo "Found super partition at: $FOUND"
-    cp "$FOUND" "$OUT_DIR/super.img"
-    ;;
+  local found
+  found="$(find "$pac_workdir" "$(dirname "$bin_abs")" -maxdepth 3 -type f \( -iname 'super.img' -o -iname 'super.bin' \) 2>/dev/null | head -n1)"
+  if [ -z "$found" ]; then
+    echo "ERROR: pacextractor ran but no super.img/super.bin was found."
+    echo "Searched under: $pac_workdir and $(dirname "$bin_abs")"
+    find "$pac_workdir" "$(dirname "$bin_abs")" -maxdepth 3
+    exit 1
+  fi
+  echo "Found super partition at: $found"
+  cp "$found" "$OUT_DIR/super.img"
+}
 
-  *.img|*.bin)
-    echo "Input is already a raw super image — copying as-is"
+case "$TYPE" in
+  super.img|super.bin)
+    echo "Type is $TYPE — copying as-is"
     cp "$INPUT_FILE" "$OUT_DIR/super.img"
     ;;
 
+  pac)
+    echo "Type is pac — running pacextractor directly"
+    run_pacextractor "$INPUT_FILE"
+    ;;
+
+  pac.zip)
+    echo "Type is pac.zip — unzipping to find the .pac first"
+    UNZIP_DIR="$(mktemp -d)"
+    unzip -q "$INPUT_FILE" -d "$UNZIP_DIR"
+
+    PAC_INSIDE="$(find "$UNZIP_DIR" -type f -iname '*.pac' | head -n1)"
+    if [ -z "$PAC_INSIDE" ]; then
+      echo "ERROR: no .pac file found inside the zip. Contents:"
+      find "$UNZIP_DIR" -type f
+      exit 1
+    fi
+    echo "Found .pac inside zip: $PAC_INSIDE"
+    run_pacextractor "$PAC_INSIDE"
+    ;;
+
   *)
-    echo "ERROR: unrecognized input file extension: $INPUT_FILE"
+    echo "ERROR: unknown type '$TYPE' (expected super.img, super.bin, pac, or pac.zip)"
     exit 1
     ;;
 esac

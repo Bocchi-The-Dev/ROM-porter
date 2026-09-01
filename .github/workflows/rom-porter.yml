@@ -4,8 +4,7 @@ name: Unisoc ROM Port
 #   bin/pacextractor   - unpacks .pac firmware -> raw partition images
 #   bin/lpunpack       - unpacks super.img -> per-partition raw images
 #   bin/lpmake         - rebuilds a super.img from per-partition raw images
-#   bin/lpdump         - reads super.img metadata (used to size the rebuilt super.img)
-# All four are the ones MIO-KITCHEN / AOSP host tools bundle internally.
+# lpdump is NOT needed — scripts/build_super.py parses the LP metadata directly.
 # erofs-utils (mkfs.erofs / fsck.erofs) is installed via apt at runtime, no need to commit it.
 
 on:
@@ -42,9 +41,10 @@ on:
           - pac.zip
         default: super.img
       device_codenames:
-        description: "Comma-separated init script codenames, e.g. P671L,P671LN (used for init.ums9230_<codename>.rc)"
+        description: "Comma-separated init script codenames, e.g. X6525,P671LN (matched against any init*<codename>*.rc in vendor/etc/init/hw)"
         required: true
         type: string
+        default: X6525
       partition_type:
         description: "Super partition layout of your device"
         required: true
@@ -85,7 +85,7 @@ jobs:
 
       - name: Prepare binaries
         run: |
-          chmod +x bin/pacextractor bin/lpunpack bin/lpmake bin/lpdump
+          chmod +x bin/pacextractor bin/lpunpack bin/lpmake
           mkdir -p work/stock_raw work/target_raw work/stock_unpacked work/target_unpacked work/result work/logs
 
       - name: Download stock firmware

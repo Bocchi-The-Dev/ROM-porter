@@ -81,7 +81,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y erofs-utils e2fsprogs android-sdk-libsparse-utils python3 unzip curl xxd
+          sudo apt-get install -y erofs-utils e2fsprogs android-sdk-libsparse-utils python3 unzip curl xxd rsync
 
       - name: Prepare binaries
         run: |

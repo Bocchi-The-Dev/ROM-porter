@@ -151,6 +151,28 @@ jobs:
             zip work/logs.zip work/logs_empty.txt
           fi
 
+      - name: Prepare release assets (split if over GitHub's 2GB asset limit)
+        id: assets
+        run: |
+          mkdir -p work/release_assets
+          mv work/logs.zip work/release_assets/
+
+          SIZE=$(stat -c%s work/final_super.img)
+          LIMIT=$((1900*1024*1024))   # 1900 MiB safety margin under GitHub's 2147483648-byte (2 GiB) hard cap
+
+          sha256sum work/final_super.img > work/release_assets/final_super.img.sha256
+
+          if [ "$SIZE" -gt "$LIMIT" ]; then
+            echo "final_super.img is $SIZE bytes (> $LIMIT) — splitting into parts"
+            split -b 1900M -d -a 3 work/final_super.img work/release_assets/final_super.img.part_
+            rm work/final_super.img
+            echo "split=true" >> "$GITHUB_OUTPUT"
+          else
+            mv work/final_super.img work/release_assets/
+            echo "split=false" >> "$GITHUB_OUTPUT"
+          fi
+          ls -la work/release_assets
+
       - name: Set release tag
         id: tag
         run: |
@@ -170,9 +192,22 @@ jobs:
             - Sparse output: `${{ inputs.sparse_output }}`
             - Stock ROM type: `${{ inputs.stock_rom_type }}`
             - Target ROM type: `${{ inputs.target_rom_type }}`
+
+            **If `final_super.img.part_*` files are attached below**, the image was too large for
+            a single GitHub asset (2GB limit) and was split. Download all parts, then reassemble:
+
+            Linux/macOS:
+            ```
+            cat final_super.img.part_* > final_super.img
+            sha256sum -c final_super.img.sha256
+            ```
+            Windows (PowerShell):
+            ```
+            Get-Content final_super.img.part_* -Raw -Encoding Byte | Set-Content final_super.img -Encoding Byte
+            ```
+            If only `final_super.img` is attached (no `.part_` files), it was small enough to upload whole.
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            work/final_super.img
-            work/logs.zip
+            work/release_assets/*

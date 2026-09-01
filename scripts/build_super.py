@@ -33,7 +33,13 @@ LPMAKE_BIN = os.path.join("bin", "lpmake")
 
 def run(cmd):
     print("+", " ".join(cmd))
-    return subprocess.run(cmd, check=True, capture_output=True, text=True)
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"--- {cmd[0]} failed (exit {result.returncode}) ---")
+        print("stdout:", result.stdout)
+        print("stderr:", result.stderr)
+        raise subprocess.CalledProcessError(result.returncode, cmd, result.stdout, result.stderr)
+    return result
 
 
 def main():
@@ -48,6 +54,17 @@ def main():
     if not os.path.exists(LPDUMP_BIN):
         print(f"ERROR: {LPDUMP_BIN} not found. Add an lpdump binary to bin/ (same as lpmake/lpunpack).")
         sys.exit(1)
+
+    # Sanity-check the binary can actually run before trying to use it for real —
+    # exit code 127 from lpdump itself (not "file not found") usually means it's a
+    # dynamically-linked binary missing a shared library, or built for the wrong
+    # architecture. `file` and `ldd` output here will show which.
+    check = subprocess.run(["file", LPDUMP_BIN], capture_output=True, text=True)
+    print(f"{LPDUMP_BIN}: {check.stdout.strip()}")
+    ldd_check = subprocess.run(["ldd", LPDUMP_BIN], capture_output=True, text=True)
+    if "not found" in ldd_check.stdout:
+        print(f"WARNING: {LPDUMP_BIN} is missing shared libraries:")
+        print(ldd_check.stdout)
 
     dump = run([LPDUMP_BIN, "--json", args.stock_super])
     try:

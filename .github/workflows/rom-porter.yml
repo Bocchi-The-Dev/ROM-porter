@@ -51,14 +51,26 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y erofs-utils e2fsprogs android-sdk-libsparse-utils python3 unzip curl xxd rsync zip attr
+          sudo apt-get install -y erofs-utils e2fsprogs android-sdk-libsparse-utils python3 unzip curl xxd rsync zip attr aria2
 
       - name: Prepare binaries
         run: |
           chmod +x bin/pacextractor bin/lpunpack
           mkdir -p work/target_raw work/target_unpacked work/result
 
+      - name: Cache downloaded target firmware
+        # Skips re-downloading entirely on repeat runs with the same URL+type —
+        # useful while iterating. Costs cache quota (10GB/repo total) though, so
+        # if you're caching other things too and hitting evictions, delete this
+        # step and the corresponding `if:` below to go back to always-download.
+        id: cache-target
+        uses: actions/cache@v4
+        with:
+          path: work/target_raw
+          key: target-rom-${{ inputs.target_rom_type }}-${{ inputs.target_rom_url }}
+
       - name: Download target firmware
+        if: steps.cache-target.outputs.cache-hit != 'true'
         run: |
           scripts/download_input.sh "${{ inputs.target_rom_url }}" work/target_raw "${{ inputs.target_rom_type }}"
 

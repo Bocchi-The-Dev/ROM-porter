@@ -138,16 +138,13 @@ jobs:
             --partition-type "${{ inputs.partition_type }}" \
             --output work/final_super.img \
             $SPARSE_FLAG
-            
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+
+      - name: Upload super.img
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: ported-super-img
+          path: |
             work/final_super.img
             work/logs/**
-          tag_name: rom-port-${{ github.run_number }}
-          body: "Ported ROM - Stock: ${{ inputs.stock_rom_type }}, Target: ${{ inputs.target_rom_type }}, Device: ${{ inputs.device_codenames }}"
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          if-no-files-found: error
+          retention-days: 14

@@ -118,10 +118,23 @@ repack_image() {
 echo "=== Patching system.img ==="
 extract_image_tracked "$RESULT_DIR/system.img" "$SYS_EXTRACT" "system"
 
-BUILD_PROP="$SYS_EXTRACT/system/build.prop"
-if [ ! -f "$BUILD_PROP" ]; then
-  BUILD_PROP="$(find "$SYS_EXTRACT" -maxdepth 2 -name build.prop | head -n1)"
-fi
+# Some partition images are built with a top-level folder matching the partition name
+# (e.g. system.img containing system/...), others have their content directly at the
+# image root. Detect which layout we actually got rather than assuming one.
+resolve_base() {
+  local extract_dir="$1"
+  local wrapper_name="$2"
+  if [ -d "$extract_dir/$wrapper_name" ]; then
+    echo "$extract_dir/$wrapper_name"
+  else
+    echo "$extract_dir"
+  fi
+}
+
+SYS_BASE="$(resolve_base "$SYS_EXTRACT" "system")"
+echo "Result system root: $SYS_BASE"
+
+BUILD_PROP="$SYS_BASE/build.prop"
 if [ -n "$BUILD_PROP" ] && [ -f "$BUILD_PROP" ]; then
   sed -i \
     -e 's/^ro\.debuggable=0$/ro.debuggable=1/' \
@@ -133,7 +146,7 @@ else
 fi
 
 if [ "$TRANSSION_ANTICRACK" = "true" ]; then
-  INIT_RC="$SYS_EXTRACT/system/etc/init/hw/init.rc"
+  INIT_RC="$SYS_BASE/etc/init/hw/init.rc"
   if [ -f "$INIT_RC" ]; then
     # Remove the vfy_boot line inside the anti-crack block
     sed -i '/vfy_boot/d' "$INIT_RC"
@@ -159,7 +172,7 @@ if [ "$TRANSSION_ANTICRACK" = "true" ]; then
   fi
 fi
 
-SYS_SEPOLICY="$SYS_EXTRACT/system/etc/selinux/system_sepolicy.cil"
+SYS_SEPOLICY="$SYS_BASE/etc/selinux/system_sepolicy.cil"
 if [ -f "$SYS_SEPOLICY" ]; then
   if ! grep -q "allow system_init selinuxfs" "$SYS_SEPOLICY"; then
     {
@@ -189,14 +202,19 @@ if [ ! -f "$TARGET_VENDOR_IMG" ]; then
 fi
 extract_image "$TARGET_VENDOR_IMG" "$TARGET_VEND_EXTRACT"
 
+VEND_BASE="$(resolve_base "$VEND_EXTRACT" "vendor")"
+TARGET_VEND_BASE="$(resolve_base "$TARGET_VEND_EXTRACT" "vendor")"
+echo "Result vendor root: $VEND_BASE"
+echo "Target vendor root: $TARGET_VEND_BASE"
+
 # Copy target's selinux dir + passwd + group into result vendor (same relative paths)
-rm -rf "$VEND_EXTRACT/vendor/etc/selinux"
-cp -r "$TARGET_VEND_EXTRACT/vendor/etc/selinux" "$VEND_EXTRACT/vendor/etc/selinux"
-cp "$TARGET_VEND_EXTRACT/vendor/etc/passwd" "$VEND_EXTRACT/vendor/etc/passwd"
-cp "$TARGET_VEND_EXTRACT/vendor/etc/group" "$VEND_EXTRACT/vendor/etc/group"
+rm -rf "$VEND_BASE/etc/selinux"
+cp -r "$TARGET_VEND_BASE/etc/selinux" "$VEND_BASE/etc/selinux"
+cp "$TARGET_VEND_BASE/etc/passwd" "$VEND_BASE/etc/passwd"
+cp "$TARGET_VEND_BASE/etc/group" "$VEND_BASE/etc/group"
 echo "Copied target selinux/passwd/group into result vendor"
 
-VEND_SEPOLICY="$VEND_EXTRACT/vendor/etc/selinux/vendor_sepolicy.cil"
+VEND_SEPOLICY="$VEND_BASE/etc/selinux/vendor_sepolicy.cil"
 if [ -f "$VEND_SEPOLICY" ]; then
   if ! grep -q "allow vendor_init selinuxfs" "$VEND_SEPOLICY"; then
     {
@@ -212,7 +230,7 @@ fi
 IFS=',' read -ra CODENAMES <<< "$DEVICE_CODENAMES"
 for CODE in "${CODENAMES[@]}"; do
   CODE_TRIMMED="$(echo "$CODE" | xargs)"
-  RC_FILE="$VEND_EXTRACT/vendor/etc/init/hw/init.ums9230_${CODE_TRIMMED}.rc"
+  RC_FILE="$VEND_BASE/etc/init/hw/init.ums9230_${CODE_TRIMMED}.rc"
   if [ -f "$RC_FILE" ]; then
     if ! grep -q "SELinux Permissive Mode" "$RC_FILE"; then
       cat >> "$RC_FILE" << 'EOF'

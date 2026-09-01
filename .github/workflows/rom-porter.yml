@@ -31,6 +31,16 @@ on:
         required: true
         type: boolean
         default: true
+      apply_headphone_jack_fix:
+        description: "Headphone jack fix."
+        required: true
+        type: boolean
+        default: false
+      apply_brightness_lag_fix:
+        description: "Fix Brightness and Lag."
+        required: true
+        type: boolean
+        default: false
 
 permissions:
   contents: write   # required so GITHUB_TOKEN can create a release + upload assets
@@ -89,9 +99,21 @@ jobs:
 
       - name: Patch system.img (build.prop, SELinux, anti-crack)
         run: |
+          SYSTEM_PROP_FLAG=""
+          if [ "${{ inputs.apply_brightness_lag_fix }}" = "true" ]; then
+            SYSTEM_PROP_FLAG="--system-prop patches/system.prop"
+          fi
           scripts/patch_system.sh \
             --system-img work/result/system.img \
-            --transsion-anticrack "${{ inputs.patch_transsion_anticrack }}"
+            --transsion-anticrack "${{ inputs.patch_transsion_anticrack }}" \
+            $SYSTEM_PROP_FLAG
+
+      - name: Patch product.img (headphone jack overlay)
+        if: ${{ inputs.apply_headphone_jack_fix }}
+        run: |
+          scripts/patch_product.sh \
+            --product-img work/result/product.img \
+            --overlay-apk patches/devinputjack.apk
 
       - name: Prepare release assets
         id: assets
@@ -118,6 +140,8 @@ jobs:
             vendor_dlkm and everything else on the device stays completely untouched).
 
             - Transsion anti-crack patch on system.img: `${{ inputs.patch_transsion_anticrack }}`
+            - Headphone jack fix (product/overlay): `${{ inputs.apply_headphone_jack_fix }}`
+            - Fix Brightness and Lag (system.prop -> build.prop): `${{ inputs.apply_brightness_lag_fix }}`
             - Target ROM type: `${{ inputs.target_rom_type }}`
 
             Flash individually, e.g.:

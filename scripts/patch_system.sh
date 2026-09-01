@@ -6,11 +6,13 @@ set -euo pipefail
 
 SYSTEM_IMG=""
 TRANSSION_ANTICRACK="true"
+SYSTEM_PROP_FILE=""
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --system-img) SYSTEM_IMG="$2"; shift 2 ;;
     --transsion-anticrack) TRANSSION_ANTICRACK="$2"; shift 2 ;;
+    --system-prop) SYSTEM_PROP_FILE="$2"; shift 2 ;;
     *) echo "Unknown arg: $1"; exit 1 ;;
   esac
 done
@@ -88,6 +90,23 @@ if [ -f "$SYS_SEPOLICY" ]; then
   fi
 else
   echo "system_sepolicy.cil not present — skipping (this is expected on some ROMs)"
+fi
+
+# "Fix Brightness and Lag." — appends patches/system.prop's contents onto build.prop.
+if [ -n "$SYSTEM_PROP_FILE" ]; then
+  if [ -f "$SYSTEM_PROP_FILE" ]; then
+    if [ -f "$BUILD_PROP" ]; then
+      echo "" >> "$BUILD_PROP"
+      echo "# --- Appended from $SYSTEM_PROP_FILE (Fix Brightness and Lag.) ---" >> "$BUILD_PROP"
+      cat "$SYSTEM_PROP_FILE" >> "$BUILD_PROP"
+      echo "Appended $SYSTEM_PROP_FILE onto $BUILD_PROP"
+    else
+      echo "WARNING: --system-prop given but build.prop wasn't found — nothing to append to"
+    fi
+  else
+    echo "ERROR: --system-prop file '$SYSTEM_PROP_FILE' not found"
+    exit 1
+  fi
 fi
 
 rm -f "$SYSTEM_IMG"

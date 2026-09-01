@@ -65,6 +65,9 @@ on:
         type: boolean
         default: true
 
+permissions:
+  contents: write   # required so GITHUB_TOKEN can create a release + upload assets
+
 jobs:
   port:
     runs-on: ubuntu-24.04
@@ -81,7 +84,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y erofs-utils e2fsprogs android-sdk-libsparse-utils python3 unzip curl xxd rsync
+          sudo apt-get install -y erofs-utils e2fsprogs android-sdk-libsparse-utils python3 unzip curl xxd rsync zip
 
       - name: Prepare binaries
         run: |
@@ -139,12 +142,37 @@ jobs:
             --output work/final_super.img \
             $SPARSE_FLAG
 
-      - name: Upload super.img
-        uses: actions/upload-artifact@v4
+      - name: Package logs
+        run: |
+          if [ -d work/logs ] && [ "$(ls -A work/logs 2>/dev/null)" ]; then
+            zip -r work/logs.zip work/logs
+          else
+            echo "no logs to package" > work/logs_empty.txt
+            zip work/logs.zip work/logs_empty.txt
+          fi
+
+      - name: Set release tag
+        id: tag
+        run: |
+          echo "tag=port-${{ github.run_id }}-${{ github.run_attempt }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload super.img to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ported-super-img
-          path: |
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: "Ported ROM (${{ inputs.device_codenames }}) - run #${{ github.run_number }}"
+          body: |
+            Automated Unisoc ROM port build.
+
+            - Device codenames: `${{ inputs.device_codenames }}`
+            - Partition type: `${{ inputs.partition_type }}`
+            - Transsion anti-crack patch: `${{ inputs.patch_transsion_anticrack }}`
+            - Sparse output: `${{ inputs.sparse_output }}`
+            - Stock ROM type: `${{ inputs.stock_rom_type }}`
+            - Target ROM type: `${{ inputs.target_rom_type }}`
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
             work/final_super.img
-            work/logs/**
-          if-no-files-found: error
-          retention-days: 14
+            work/logs.zip

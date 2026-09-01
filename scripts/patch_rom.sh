@@ -23,12 +23,21 @@ VEND_EXTRACT="$WORK/vendor"
 TARGET_VEND_EXTRACT="$WORK/target_vendor"
 
 # --- filesystem type detection -------------------------------------------
-# EROFS superblock magic (0xE0F5E1E2, little-endian) sits at byte offset 1024.
+# EROFS superblock magic is 0xE0F5E1E2 (little-endian), stored on-disk at byte
+# offset 1024 as the reversed byte sequence e2 e1 f5 e0.
 is_erofs() {
   local img="$1"
   local magic
   magic="$(dd if="$img" bs=1 skip=1024 count=4 2>/dev/null | xxd -p)"
-  [ "$magic" = "e0f5e1e2" ]
+  [ "$magic" = "e2e1f5e0" ]
+}
+
+# ext4 magic is 0xEF53 (little-endian), stored at byte offset 0x438 (1080) as 53 ef.
+is_ext4() {
+  local img="$1"
+  local magic
+  magic="$(dd if="$img" bs=1 skip=1080 count=2 2>/dev/null | xxd -p)"
+  [ "$magic" = "53ef" ]
 }
 
 extract_image() {
@@ -38,27 +47,76 @@ extract_image() {
   if is_erofs "$img"; then
     echo "$(basename "$img") detected as EROFS"
     fsck.erofs --extract="$out" "$img" > /dev/null
+  elif is_ext4 "$img"; then
+    echo "$(basename "$img") detected as ext4 — extracting via loop mount"
+    local mnt
+    mnt="$(mktemp -d)"
+    sudo mount -o loop,ro "$img" "$mnt"
+    # -aX preserves perms/timestamps/xattrs (including security.selinux) where the
+    # source mount exposes them; SELinux contexts on Android ext4 images are stored
+    # as xattrs so this carries them across, but there's no e2fsdroid here to verify
+    # them against a policy — spot-check with `getfattr -d` on a few files if in doubt.
+    sudo rsync -aX "$mnt/" "$out/"
+    sudo umount "$mnt"
+    sudo chown -R "$(id -u):$(id -g)" "$out"
+    rmdir "$mnt"
   else
-    echo "ERROR: $(basename "$img") is NOT EROFS."
-    echo "This workflow currently only automates EROFS system/vendor images."
-    echo "Your ROM likely uses ext4 for this partition — the extract/repack steps"
-    echo "need to be swapped to a loop-mount + make_ext4fs based approach."
-    echo "Stopping here rather than silently producing a broken image."
+    echo "ERROR: $(basename "$img") is neither EROFS nor ext4 (unrecognized superblock)."
+    echo "First bytes at offset 1024 (erofs check) and 1080 (ext4 check) didn't match either magic."
     exit 1
   fi
+}
+
+# Tracks which format each image was, set by extract_image via a side-channel file,
+# so repack_image can rebuild in the same format it extracted.
+FMT_FILE="$WORK/fmt_map"
+: > "$FMT_FILE"
+
+extract_image_tracked() {
+  local img="$1"
+  local out="$2"
+  local key="$3"
+  if is_erofs "$img"; then
+    echo "$key=erofs" >> "$FMT_FILE"
+  elif is_ext4 "$img"; then
+    echo "$key=ext4" >> "$FMT_FILE"
+  fi
+  extract_image "$img" "$out"
 }
 
 repack_image() {
   local src_dir="$1"
   local out_img="$2"
   local mount_point="$3"   # e.g. /system or /vendor — cosmetic but matches AOSP convention
-  mkfs.erofs --quiet -zlz4hc,9 --mount-point="$mount_point" "$out_img" "$src_dir"
-  echo "Repacked -> $out_img ($(du -h "$out_img" | cut -f1))"
+  local key="$4"
+
+  local fmt
+  fmt="$(grep "^${key}=" "$FMT_FILE" | tail -n1 | cut -d= -f2)"
+
+  if [ "$fmt" = "ext4" ]; then
+    echo "Repacking $key as ext4"
+    local size_bytes
+    size_bytes="$(du -sb "$src_dir" | cut -f1)"
+    # 25% headroom for filesystem overhead/metadata, rounded up to a 4K block.
+    local target_bytes=$(( size_bytes + size_bytes / 4 + 4096 ))
+    truncate -s "$target_bytes" "$out_img"
+    mke2fs -q -t ext4 -O ^has_journal,^resize_inode -F "$out_img"
+    local mnt
+    mnt="$(mktemp -d)"
+    sudo mount -o loop,rw "$out_img" "$mnt"
+    sudo rsync -aX "$src_dir/" "$mnt/"
+    sudo umount "$mnt"
+    rmdir "$mnt"
+    echo "Repacked -> $out_img ($(du -h "$out_img" | cut -f1))"
+  else
+    mkfs.erofs --quiet -zlz4hc,9 --mount-point="$mount_point" "$out_img" "$src_dir"
+    echo "Repacked -> $out_img ($(du -h "$out_img" | cut -f1))"
+  fi
 }
 
 # --- system.img ------------------------------------------------------------
 echo "=== Patching system.img ==="
-extract_image "$RESULT_DIR/system.img" "$SYS_EXTRACT"
+extract_image_tracked "$RESULT_DIR/system.img" "$SYS_EXTRACT" "system"
 
 BUILD_PROP="$SYS_EXTRACT/system/build.prop"
 if [ ! -f "$BUILD_PROP" ]; then
@@ -115,13 +173,21 @@ else
 fi
 
 rm -f "$RESULT_DIR/system.img"
-repack_image "$SYS_EXTRACT" "$RESULT_DIR/system.img" "/system"
+repack_image "$SYS_EXTRACT" "$RESULT_DIR/system.img" "/system" "system"
 
 # --- vendor.img --------------------------------------------------------
 echo "=== Patching vendor.img ==="
-extract_image "$RESULT_DIR/vendor.img" "$VEND_EXTRACT"
-extract_image "$TARGET_UNPACKED/vendor.img" "$TARGET_VEND_EXTRACT" 2>/dev/null || \
-  extract_image "$TARGET_UNPACKED/vendor_a.img" "$TARGET_VEND_EXTRACT"
+extract_image_tracked "$RESULT_DIR/vendor.img" "$VEND_EXTRACT" "vendor"
+
+TARGET_VENDOR_IMG="$TARGET_UNPACKED/vendor.img"
+if [ ! -f "$TARGET_VENDOR_IMG" ]; then
+  TARGET_VENDOR_IMG="$TARGET_UNPACKED/vendor_a.img"
+fi
+if [ ! -f "$TARGET_VENDOR_IMG" ]; then
+  echo "ERROR: could not find vendor.img or vendor_a.img in $TARGET_UNPACKED"
+  exit 1
+fi
+extract_image "$TARGET_VENDOR_IMG" "$TARGET_VEND_EXTRACT"
 
 # Copy target's selinux dir + passwd + group into result vendor (same relative paths)
 rm -rf "$VEND_EXTRACT/vendor/etc/selinux"
@@ -175,6 +241,6 @@ EOF
 done
 
 rm -f "$RESULT_DIR/vendor.img"
-repack_image "$VEND_EXTRACT" "$RESULT_DIR/vendor.img" "/vendor"
+repack_image "$VEND_EXTRACT" "$RESULT_DIR/vendor.img" "/vendor" "vendor"
 
 echo "=== Patching complete ==="

@@ -230,8 +230,26 @@ fi
 IFS=',' read -ra CODENAMES <<< "$DEVICE_CODENAMES"
 for CODE in "${CODENAMES[@]}"; do
   CODE_TRIMMED="$(echo "$CODE" | xargs)"
-  RC_FILE="$VEND_BASE/etc/init/hw/init.ums9230_${CODE_TRIMMED}.rc"
-  if [ -f "$RC_FILE" ]; then
+  INIT_HW_DIR="$VEND_BASE/etc/init/hw"
+
+  # Naming isn't consistent across ROMs/devices — some use init.ums9230_<codename>.rc,
+  # others (like this one) use init.<codename>.rc directly. Search by codename instead
+  # of assuming one exact filename.
+  mapfile -t RC_MATCHES < <(find "$INIT_HW_DIR" -maxdepth 1 -type f -iname "init*${CODE_TRIMMED}*.rc" 2>/dev/null)
+
+  if [ "${#RC_MATCHES[@]}" -eq 0 ]; then
+    echo "WARNING: no init*.rc file matching codename '$CODE_TRIMMED' found in $INIT_HW_DIR"
+    echo "Files actually present there:"
+    ls "$INIT_HW_DIR" 2>/dev/null || echo "  (directory doesn't exist)"
+    continue
+  fi
+
+  if [ "${#RC_MATCHES[@]}" -gt 1 ]; then
+    echo "WARNING: multiple init*.rc files matched codename '$CODE_TRIMMED' — patching all of them:"
+    printf '  %s\n' "${RC_MATCHES[@]}"
+  fi
+
+  for RC_FILE in "${RC_MATCHES[@]}"; do
     if ! grep -q "SELinux Permissive Mode" "$RC_FILE"; then
       cat >> "$RC_FILE" << 'EOF'
 
@@ -253,9 +271,7 @@ on property:sys.boot_completed=1
 EOF
     fi
     echo "Patched $RC_FILE"
-  else
-    echo "WARNING: $RC_FILE not found — check the codename you passed in device_codenames"
-  fi
+  done
 done
 
 rm -f "$RESULT_DIR/vendor.img"

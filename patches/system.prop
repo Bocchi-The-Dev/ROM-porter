@@ -1,0 +1,15 @@
+debug.cpurend.vsync=false
+debug.hwui.skia_atrace_enabled=false
+debug.renderengine.backend=skiaglthreaded
+debug.hwui.renderer=skiagl
+ro.config.enable.hw_accel=true
+debug.hwui.render_dirty_regions=true
+persist.sys.use_dithering=1
+debug.enabletr=true
+ro.fb.mode=1
+hw3d.force=1
+persist.sys.ui.hw=1
+ro.sf.compbypass.enable=0
+debug.composition.type=gpu
+persist.sys.composition.type=gpu
+ro.config.low_ram=false

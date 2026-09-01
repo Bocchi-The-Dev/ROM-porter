@@ -200,6 +200,42 @@ def main():
 
     print("Partitions to pack:", ", ".join(images.keys()))
 
+    # The donor (target) ROM's partitions can easily be bigger than what the stock
+    # device's group was originally sized for — the stock group_size only ever had to
+    # fit the stock device's own system/vendor/etc, not a foreign donor's. If the real
+    # packed sizes don't fit, grow the group (and the super device if needed) rather
+    # than fail — but say so loudly, since this deviates from the stock partition table
+    # and you should sanity-check it fits your device's actual physical super partition
+    # before flashing (some headroom beyond the logical group size is normal/expected,
+    # but it isn't unlimited).
+    total_needed = sum(os.path.getsize(p) for p in images.values())
+    MARGIN_BYTES = 64 * 1024 * 1024  # slack for filesystem/lpmake alignment overhead
+    required_group_size = total_needed + MARGIN_BYTES
+
+    if required_group_size > group_size:
+        print(f"\nWARNING: packed partitions need {required_group_size} bytes but the "
+              f"stock group '{group_name}' only allows {group_size} bytes.")
+        print(f"Growing group size {group_size} -> {required_group_size} "
+              f"(+{required_group_size - group_size} bytes) to fit the donor ROM's partitions.")
+        group_size = required_group_size
+
+        # Only one physical group is ever declared now (no --auto-slot-suffixing), so
+        # there's only one copy of it to fit inside the super device, regardless of
+        # partition_type. (If you ever do need genuine dual-slot OTA support later,
+        # that's what --auto-slot-suffixing was for — reintroduce it and this would
+        # need to become a 2x multiplier again for a true non-virtual A/B build.)
+        required_super_size = (metadata_size * metadata_slots * 2) + group_size
+        if required_super_size > super_size:
+            print(f"WARNING: also growing super device size {super_size} -> {required_super_size} "
+                  f"to physically fit the larger group.")
+            print("This device size must not exceed your phone's actual physical 'super' "
+                  "partition capacity — check with `fastboot getvar all` (look for the "
+                  "super partition size) before flashing a super.img built this large.")
+            super_size = required_super_size
+    else:
+        print(f"\nPacked partitions ({total_needed} bytes) fit within stock group size "
+              f"({group_size} bytes) with margin to spare.")
+
     cmd = [
         LPMAKE_BIN,
         "--metadata-size", str(metadata_size),
@@ -208,8 +244,12 @@ def main():
         "--group", f"{group_name}:{group_size}",
     ]
 
-    if args.partition_type in ("ab", "virtual-ab"):
-        cmd.append("--auto-slot-suffixing")
+    # No --auto-slot-suffixing here on purpose: that flag duplicates every group/partition
+    # into matching _a/_b pairs for real dual-slot OTA support. This build only targets a
+    # single active slot (no over-the-air updates), so we skip creating the _b copies
+    # entirely rather than reserving space for a group that will sit at 0 bytes used.
+    # --virtual-ab is still set when relevant since it's a hardware/bootloader attribute
+    # your device expects regardless of whether a second slot's data actually exists.
     if args.partition_type == "virtual-ab":
         cmd.append("--virtual-ab")
 

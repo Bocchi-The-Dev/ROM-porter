@@ -55,7 +55,7 @@ jobs:
 
       - name: Prepare binaries
         run: |
-          chmod +x bin/pacextractor bin/lpunpack
+          chmod +x bin/pacextractor bin/lpunpack scripts/*.sh
           mkdir -p work/target_raw work/target_unpacked work/result
 
       - name: Cache downloaded target firmware

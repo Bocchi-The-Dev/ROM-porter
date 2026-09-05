@@ -110,5 +110,10 @@ if [ -n "$SYSTEM_PROP_FILE" ]; then
 fi
 
 rm -f "$SYSTEM_IMG"
-mkfs.erofs --quiet -zlz4hc,9 --mount-point="/system" "$SYSTEM_IMG" "$SYS_EXTRACT"
+# -E legacy-compress: forces the older on-disk EROFS layout (no "decompression
+# in-place"/"compacted indexes", which need kernel >= 5.3). Unisoc/Transsion
+# devices often run older forked kernels, and EROFS deliberately refuses to
+# mount images with feature flags it doesn't recognize — this is the fix for
+# "device never reaches bootanim" when that's the actual cause.
+mkfs.erofs --quiet -E legacy-compress -zlz4hc,9 --mount-point="/system" "$SYSTEM_IMG" "$SYS_EXTRACT"
 echo "Repacked -> $SYSTEM_IMG ($(du -h "$SYSTEM_IMG" | cut -f1))"

@@ -53,5 +53,6 @@ cp "$OVERLAY_APK" "$OVERLAY_DIR/$(basename "$OVERLAY_APK")"
 echo "Copied $(basename "$OVERLAY_APK") into $OVERLAY_DIR (Headphone jack fix.)"
 
 rm -f "$PRODUCT_IMG"
-mkfs.erofs --quiet -zlz4hc,9 --mount-point="/product" "$PRODUCT_IMG" "$PROD_EXTRACT"
+# See patch_system.sh for why -E legacy-compress is here — same kernel-compat reasoning.
+mkfs.erofs --quiet -E legacy-compress -zlz4hc,9 --mount-point="/product" "$PRODUCT_IMG" "$PROD_EXTRACT"
 echo "Repacked -> $PRODUCT_IMG ($(du -h "$PRODUCT_IMG" | cut -f1))"

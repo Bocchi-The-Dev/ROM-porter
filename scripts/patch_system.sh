@@ -59,7 +59,40 @@ fi
 if [ "$TRANSSION_ANTICRACK" = "true" ]; then
   INIT_RC="$SYS_BASE/etc/init/hw/init.rc"
   if [ -f "$INIT_RC" ]; then
-    sed -i '/vfy_boot/d' "$INIT_RC"
+    if grep -q "vfy_boot" "$INIT_RC"; then
+      # Only drop vfy_boot lines that are standalone statements. Blind
+      # `sed -i '/vfy_boot/d'` will happily delete one line out of a
+      # multi-line `\`-continued init.rc block, which corrupts the
+      # init language parse and can hard-bootloop the device before
+      # the boot animation — with no logcat available to explain why.
+      # Lines that are themselves a continuation, or that end in `\`
+      # (starting/continuing a multi-line block), are left untouched
+      # and flagged for manual review instead.
+      awk '
+        {
+          is_continuation = (prev_ends_bslash == 1)
+          ends_bslash = ($0 ~ /\\[[:space:]]*$/)
+          if ($0 ~ /vfy_boot/ && !is_continuation && !ends_bslash) {
+            print $0 > "/dev/stderr"
+          } else {
+            print $0
+          }
+          prev_ends_bslash = ends_bslash
+        }
+      ' "$INIT_RC" 1> "$INIT_RC.tmp" 2> "$INIT_RC.removed"
+      mv "$INIT_RC.tmp" "$INIT_RC"
+      if [ -s "$INIT_RC.removed" ]; then
+        echo "Removed $(wc -l < "$INIT_RC.removed") standalone vfy_boot line(s):"
+        cat "$INIT_RC.removed"
+      fi
+      rm -f "$INIT_RC.removed"
+      if grep -q "vfy_boot" "$INIT_RC"; then
+        echo "WARNING: vfy_boot still present — left in place because it's part of a multi-line block. Inspect manually:"
+        grep -n "vfy_boot" "$INIT_RC"
+      fi
+    else
+      echo "No vfy_boot references in $INIT_RC — nothing to remove (expected on donors like A13 TranssionOS)"
+    fi
     if ! grep -q "Force SELinux Permissive" "$INIT_RC"; then
       awk '
         { print }

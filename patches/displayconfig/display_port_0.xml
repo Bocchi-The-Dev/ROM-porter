@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Infinix Smart 8 (X6525) panel display configuration.
+     Fixes SurfaceFlinger display-server crashes (ArrayIndexOutOfBounds on empty
+     brightness maps) seen with donor ROM configs: provides a full float
+     screenBrightnessMap + nits curve, density and default brightness for the
+     720x1612 panel. Installed by scripts/patch_display.sh. -->
+<displayConfiguration>
+    <screenBrightnessMap>
+        <point>
+            <value>0.0</value>
+            <nits>2.0</nits>
+        </point>
+        <point>
+            <value>0.05</value>
+            <nits>10.0</nits>
+        </point>
+        <point>
+            <value>0.2</value>
+            <nits>50.0</nits>
+        </point>
+        <point>
+            <value>0.45</value>
+            <nits>150.0</nits>
+        </point>
+        <point>
+            <value>0.7</value>
+            <nits>300.0</nits>
+        </point>
+        <point>
+            <value>1.0</value>
+            <nits>500.0</nits>
+        </point>
+    </screenBrightnessMap>
+    <screenBrightnessDefault>0.65</screenBrightnessDefault>
+    <densityMapping>
+        <density>
+            <height>1612</height>
+            <width>720</width>
+            <density>320</density>
+        </density>
+    </densityMapping>
+    <integer name="config_autoBrightnessBrighteningLightDebounce">2000</integer>
+    <integer name="config_autoBrightnessDarkeningLightDebounce">4000</integer>
+</displayConfiguration>

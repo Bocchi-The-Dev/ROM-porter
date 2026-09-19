@@ -22,20 +22,33 @@ run_pacextractor() {
   cp "$pac_file" "$pac_workdir/"
   local pac_name
   pac_name="$(basename "$pac_file")"
+  local pac_out="$pac_workdir/out"
+  mkdir -p "$pac_out"
 
-  # pacextractor is invoked from its own directory (./pacextractor file.pac) per your usage note.
-  # We search both next to the binary AND next to the .pac for its output, since different
-  # builds drop output in different places.
-  local bin_abs
-  bin_abs="$(realpath bin/pacextractor)"
-  (cd "$pac_workdir" && "$bin_abs" "$pac_name")
+  local repo_root
+  repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  local pacextractor="$repo_root/bin/pacextractor"
+  if [ ! -x "$pacextractor" ]; then
+    echo "ERROR: $pacextractor not found or not executable."
+    echo "The repo must contain the pacextractor binary under bin/ (git keeps its +x bit)."
+    exit 1
+  fi
 
+  # pacextractor usage: pacextractor [-d] [-c] firmware.pac [outdir].
+  # Give it an explicit outdir so output location is deterministic (older notes
+  # suggested running it from its own directory, but it honors CWD/outdir for
+  # output — keep everything inside our workdir instead of polluting the repo).
+  (cd "$pac_workdir" && "$pacextractor" "$pac_name" "$pac_out")
+
+  echo "pacextractor output:"
+  find "$pac_out" -maxdepth 2 | head -n 30
+
+  # PAC layouts vary: super may appear as super.img, super.bin, or bare `super`.
   local found
-  found="$(find "$pac_workdir" "$(dirname "$bin_abs")" -maxdepth 3 -type f \( -iname 'super.img' -o -iname 'super.bin' \) 2>/dev/null | head -n1)"
+  found="$(find "$pac_out" -maxdepth 3 -type f \( -iname 'super.img' -o -iname 'super.bin' -o -iname 'super' \) 2>/dev/null | head -n1)"
   if [ -z "$found" ]; then
-    echo "ERROR: pacextractor ran but no super.img/super.bin was found."
-    echo "Searched under: $pac_workdir and $(dirname "$bin_abs")"
-    find "$pac_workdir" "$(dirname "$bin_abs")" -maxdepth 3
+    echo "ERROR: pacextractor ran but no super image was found."
+    echo "If super came out under a different name, rename/copy it to super.img manually."
     exit 1
   fi
   echo "Found super partition at: $found"
@@ -69,7 +82,8 @@ case "$TYPE" in
     ;;
 
   *)
-    echo "ERROR: unknown type '$TYPE' (expected super.img, super.bin, pac, or pac.zip)"
+    echo "ERROR: unknown type '$TYPE' (expected super.img, super.bin, pac, or pac.zip;"
+    echo "OTA zips go through scripts/extract_ota.sh instead)"
     exit 1
     ;;
 esac

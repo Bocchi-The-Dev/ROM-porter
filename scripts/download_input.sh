@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # download_input.sh <url> <dest_dir> <type>
-# type is one of: super.img | super.bin | pac | pac.zip
+# type is one of: super.img | super.bin | pac | pac.zip | ota
 # Downloads into dest_dir/input.<ext> using the extension that matches the declared type.
 set -euo pipefail
 
@@ -14,8 +14,9 @@ case "$TYPE" in
   super.bin) EXT="bin" ;;
   pac)       EXT="pac" ;;
   pac.zip)   EXT="pac.zip" ;;
+  ota)       EXT="zip" ;;
   *)
-    echo "ERROR: unknown type '$TYPE' (expected super.img, super.bin, pac, or pac.zip)"
+    echo "ERROR: unknown type '$TYPE' (expected super.img, super.bin, pac, pac.zip, or ota)"
     exit 1
     ;;
 esac

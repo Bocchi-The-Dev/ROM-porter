@@ -7,6 +7,8 @@ name: Unisoc ROM Port (system-only)
 # at all. It only extracts and patches system/system_ext/product from the donor ROM,
 # leaving vendor/odm/vendor_dlkm/everything else on the phone completely untouched.
 # erofs-utils (mkfs.erofs / fsck.erofs) is installed via apt at runtime.
+# OTA zips (type `ota`, A/B payload.bin) are handled by scripts/extract_ota.sh,
+# which downloads payload-dumper-go on first use.
 
 on:
   workflow_dispatch:
@@ -25,6 +27,7 @@ on:
           - super.bin
           - pac
           - pac.zip
+          - ota
         default: super.img
       patch_transsion_anticrack:
         description: "Remove Transsion anti-crack block + force SELinux permissive on system.img (Itel/Infinix/Techno only)"
@@ -41,6 +44,11 @@ on:
         required: true
         type: boolean
         default: false
+      apply_display_config_fix:
+        description: "Install Smart 8 panel display configs (fixes display-server crashes on donors with empty brightness maps)."
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: write   # required so GITHUB_TOKEN can create a release + upload assets
@@ -85,15 +93,24 @@ jobs:
           scripts/download_input.sh "${{ inputs.target_rom_url }}" work/target_raw "${{ inputs.target_rom_type }}"
 
       - name: Extract target -> super.img
+        if: inputs.target_rom_type != 'ota'
         run: |
           scripts/get_super.sh work/target_raw work/target_super "${{ inputs.target_rom_type }}"
 
+      - name: Extract partitions from OTA zip
+        if: inputs.target_rom_type == 'ota'
+        run: |
+          OTA_ZIP="$(find work/target_raw -maxdepth 1 -type f -name 'input.zip' | head -n1)"
+          scripts/extract_ota.sh "$OTA_ZIP" work/result
+
       - name: lpunpack target super.img
+        if: inputs.target_rom_type != 'ota'
         run: |
           bin/lpunpack work/target_super/super.img work/target_unpacked
           ls -la work/target_unpacked
 
       - name: Collect donor system/system_ext/product
+        if: inputs.target_rom_type != 'ota'
         run: |
           scripts/collect_donor_partitions.sh work/target_unpacked work/result
 
@@ -110,10 +127,21 @@ jobs:
 
       - name: Patch product.img (headphone jack overlay)
         if: ${{ inputs.apply_headphone_jack_fix }}
+        # The overlay APK grows product.img slightly; ALLOW_GROWTH=1 permits it
+        # (fails safe by default — only enable if you know your product partition
+        # has the slack, and always verify the size in the step log).
+        env:
+          ALLOW_GROWTH: 1
         run: |
           scripts/patch_product.sh \
             --product-img work/result/product.img \
             --overlay-apk patches/devinputjack.apk
+
+      - name: Patch product.img (Smart 8 display configs)
+        if: ${{ inputs.apply_display_config_fix }}
+        run: |
+          scripts/patch_display.sh \
+            --product-img work/result/product.img
 
       - name: Prepare release assets
         id: assets
@@ -142,6 +170,7 @@ jobs:
             - Transsion anti-crack patch on system.img: `${{ inputs.patch_transsion_anticrack }}`
             - Headphone jack fix (product/overlay): `${{ inputs.apply_headphone_jack_fix }}`
             - Fix Brightness and Lag (system.prop -> build.prop): `${{ inputs.apply_brightness_lag_fix }}`
+            - Smart 8 display configs (product displayconfig fix): `${{ inputs.apply_display_config_fix }}`
             - Target ROM type: `${{ inputs.target_rom_type }}`
 
             Flash individually, e.g.:

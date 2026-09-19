@@ -200,8 +200,10 @@ for k in sorted(set(a) | set(b)):
         print("PATH-DIFF:", k, "only in", "orig" if k in a else "new")
         bad += 1
     elif a[k] != b[k]:
-        # symlink mode-only quirks are kernel-ignored; skip those
-        if a[k][0] and b[k][0] and a[k][1:] == b[k][1:]:
+        # Symlink permission bits are kernel-ignored (stock images carry
+        # arbitrary modes like 0644 on links while rebuilds store 0777), so
+        # for symlinks only uid/gid/label must match.
+        if a[k][0] and b[k][0] and a[k][2:] == b[k][2:]:
             pass
         else:
             print("META-DIFF:", k, a[k], "->", b[k])

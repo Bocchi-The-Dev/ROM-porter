@@ -43,7 +43,7 @@ if ! is_erofs "$PRODUCT_IMG"; then
 fi
 
 WORK="$(mktemp -d)"
-trap 'umount_mnt "$WORK/mnt" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+trap 'umount_mnt "$WORK/mnt" 2>/dev/null || true; $SUDO rm -rf "$WORK"' EXIT
 PROD_EXTRACT="$WORK/product"
 META_TSV="$WORK/meta.tsv"
 MNT="$WORK/mnt"
@@ -56,7 +56,7 @@ mount_ro "$PRODUCT_IMG" "$MNT"
 snapshot_metadata "$MNT" "$META_TSV"
 $SUDO fsck.erofs --extract="$PROD_EXTRACT" "$PRODUCT_IMG" > /dev/null
 
-if [ -d "$PROD_EXTRACT/product" ]; then
+if $SUDO test -d "$PROD_EXTRACT/product"; then
   PROD_BASE="$PROD_EXTRACT/product"
 else
   PROD_BASE="$PROD_EXTRACT"
@@ -130,5 +130,5 @@ fi
 
 mv "$OUT_TMP" "$PRODUCT_IMG"
 trap - EXIT
-rm -rf "$WORK"
+$SUDO rm -rf "$WORK"
 echo "Repacked -> $PRODUCT_IMG ($(du -h "$PRODUCT_IMG" | cut -f1))"

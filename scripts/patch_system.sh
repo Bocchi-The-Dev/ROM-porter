@@ -44,7 +44,7 @@ if ! is_erofs "$SYSTEM_IMG"; then
 fi
 
 WORK="$(mktemp -d)"
-trap 'umount_mnt "$WORK/mnt" 2>/dev/null || true; rm -rf "$WORK"' EXIT
+trap 'umount_mnt "$WORK/mnt" 2>/dev/null || true; $SUDO rm -rf "$WORK"' EXIT
 SYS_EXTRACT="$WORK/system"
 META_TSV="$WORK/meta.tsv"
 MNT="$WORK/mnt"
@@ -62,7 +62,7 @@ $SUDO fsck.erofs --extract="$SYS_EXTRACT" "$SYSTEM_IMG" > /dev/null
 
 # Some system images have a top-level "system/" wrapper folder (system-as-root
 # layout), others have content directly at the root. Detect rather than assume.
-if [ -d "$SYS_EXTRACT/system" ]; then
+if $SUDO test -d "$SYS_EXTRACT/system"; then
   SYS_BASE="$SYS_EXTRACT/system"
 else
   SYS_BASE="$SYS_EXTRACT"
@@ -71,7 +71,7 @@ echo "System root: $SYS_BASE"
 
 # 3. Apply content patches (tree is root-owned; use sudo).
 BUILD_PROP="$SYS_BASE/build.prop"
-if [ -f "$BUILD_PROP" ]; then
+if $SUDO test -f "$BUILD_PROP"; then
   $SUDO sed -i \
     -e 's/^ro\.debuggable=0$/ro.debuggable=1/' \
     -e 's/^ro\.force\.debuggable=0$/ro.force.debuggable=1/' \
@@ -83,7 +83,7 @@ fi
 
 if [ "$TRANSSION_ANTICRACK" = "true" ]; then
   INIT_RC="$SYS_BASE/etc/init/hw/init.rc"
-  if [ -f "$INIT_RC" ]; then
+  if $SUDO test -f "$INIT_RC"; then
     if $SUDO grep -q "vfy_boot" "$INIT_RC"; then
       # Only drop vfy_boot lines that are standalone statements. Blind
       # `sed -i '/vfy_boot/d'` will happily delete one line out of a
@@ -93,6 +93,9 @@ if [ "$TRANSSION_ANTICRACK" = "true" ]; then
       # Lines that are themselves a continuation, or that end in `\`
       # (starting/continuing a multi-line block), are left untouched
       # and flagged for manual review instead.
+      # NOTE: awk output redirects to $WORK (runner-owned); only the final
+      # move into the root-owned tree uses sudo. Redirecting straight into
+      # the tree fails because shell redirections don't go through sudo.
       $SUDO awk '
         {
           is_continuation = (prev_ends_bslash == 1)
@@ -104,13 +107,13 @@ if [ "$TRANSSION_ANTICRACK" = "true" ]; then
           }
           prev_ends_bslash = ends_bslash
         }
-      ' "$INIT_RC" 1> "$INIT_RC.tmp" 2> "$INIT_RC.removed"
-      $SUDO mv "$INIT_RC.tmp" "$INIT_RC"
-      if [ -s "$INIT_RC.removed" ]; then
-        echo "Removed $($SUDO wc -l < "$INIT_RC.removed") standalone vfy_boot line(s):"
-        $SUDO cat "$INIT_RC.removed"
+      ' "$INIT_RC" 1> "$WORK/init.rc.tmp" 2> "$WORK/init.rc.removed"
+      $SUDO mv "$WORK/init.rc.tmp" "$INIT_RC"
+      if [ -s "$WORK/init.rc.removed" ]; then
+        echo "Removed $(wc -l < "$WORK/init.rc.removed") standalone vfy_boot line(s):"
+        cat "$WORK/init.rc.removed"
       fi
-      $SUDO rm -f "$INIT_RC.removed"
+      rm -f "$WORK/init.rc.removed"
       if $SUDO grep -q "vfy_boot" "$INIT_RC"; then
         echo "WARNING: vfy_boot still present — left in place because it's part of a multi-line block. Inspect manually:"
         $SUDO grep -n "vfy_boot" "$INIT_RC"
@@ -129,7 +132,7 @@ if [ "$TRANSSION_ANTICRACK" = "true" ]; then
           print "    setenforce 0"
           print "    setprop ro.boot.selinux permissive"
         }
-      ' "$INIT_RC" > "$INIT_RC.tmp" && $SUDO mv "$INIT_RC.tmp" "$INIT_RC"
+      ' "$INIT_RC" > "$WORK/init.rc.tmp" && $SUDO mv "$WORK/init.rc.tmp" "$INIT_RC"
     fi
     echo "Patched Transsion anti-crack block in $INIT_RC"
   else
@@ -138,7 +141,7 @@ if [ "$TRANSSION_ANTICRACK" = "true" ]; then
 fi
 
 SYS_SEPOLICY="$SYS_BASE/etc/selinux/system_sepolicy.cil"
-if [ -f "$SYS_SEPOLICY" ]; then
+if $SUDO test -f "$SYS_SEPOLICY"; then
   if ! $SUDO grep -q "allow system_init selinuxfs" "$SYS_SEPOLICY"; then
     {
       echo "(allow system_init selinuxfs (file (write)))"
@@ -153,7 +156,7 @@ fi
 # "Fix Brightness and Lag." — appends patches/system.prop's contents onto build.prop.
 if [ -n "$SYSTEM_PROP_FILE" ]; then
   if [ -f "$SYSTEM_PROP_FILE" ]; then
-    if [ -f "$BUILD_PROP" ]; then
+    if $SUDO test -f "$BUILD_PROP"; then
       {
         echo ""
         echo "# --- Appended from $SYSTEM_PROP_FILE (Fix Brightness and Lag.) ---"
@@ -204,5 +207,5 @@ fi
 
 mv "$OUT_TMP" "$SYSTEM_IMG"
 trap - EXIT
-rm -rf "$WORK"
+$SUDO rm -rf "$WORK"
 echo "Repacked -> $SYSTEM_IMG ($(du -h "$SYSTEM_IMG" | cut -f1))"

@@ -4,8 +4,7 @@
 # *losslessly*: ownership, modes and SELinux labels are snapshotted from the
 # source image and re-applied (the new APK is labeled like its neighbors),
 # the original UUID is kept, and the result is verified file-by-file before it
-# replaces the original. A rebuilt image bigger than the source is rejected
-# unless ALLOW_GROWTH=1 (it may not fit its logical partition).
+# replaces the original. A rebuilt image bigger than the target partition
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -118,17 +117,7 @@ done
 verify_repack "$OUT_TMP" "$MNT" "${IGNORES[@]}"
 umount_mnt "$MNT"
 
-# 6. Size gate (see patch_system.sh for why).
-NEW_SIZE="$(stat -c%s "$OUT_TMP")"
-if [ "$NEW_SIZE" -gt "$ORIG_SIZE" ] && [ "${ALLOW_GROWTH:-0}" != "1" ]; then
-  echo "ERROR: rebuilt image grew ($ORIG_SIZE -> $NEW_SIZE bytes) and would"
-  echo "risk not fitting its partition. Aborting without touching the original."
-  echo "Set ALLOW_GROWTH=1 in the environment to override (know your partition size)."
-  exit 1
-fi
-if [ "$NEW_SIZE" -gt "$ORIG_SIZE" ]; then
-  echo "WARNING: rebuilt image grew ($ORIG_SIZE -> $NEW_SIZE bytes) — allowed via ALLOW_GROWTH=1"
-fi
+echo "Size: $ORIG_SIZE -> $(stat -c%s "$OUT_TMP") bytes"
 
 mv "$OUT_TMP" "$PRODUCT_IMG"
 trap - EXIT

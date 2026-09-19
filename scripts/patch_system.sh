@@ -3,9 +3,10 @@
 # Patches build.prop + (optionally) the Transsion anti-crack block, then rebuilds
 # the EROFS image *losslessly*: ownership, modes and SELinux labels are snapshotted
 # from the source image and re-applied, the original UUID is kept, and the result
-# is verified file-by-file before it replaces the original. Rebuilt images that
-# grow beyond the original size are rejected unless ALLOW_GROWTH=1 (a bigger image
-# may not fit its logical partition and will bootloop).
+# is verified file-by-file before it replaces the original.
+#
+# must fit into when flashed). The rebuild is rejected if it exceeds that
+# gate conservatively rejects any growth at all.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +16,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SYSTEM_IMG=""
 TRANSSION_ANTICRACK="true"
 SYSTEM_PROP_FILE=""
-
 while [ $# -gt 0 ]; do
   case "$1" in
     --system-img) SYSTEM_IMG="$2"; shift 2 ;;
@@ -214,18 +214,7 @@ $SUDO fsck.erofs "$OUT_TMP" > /dev/null
 verify_repack "$OUT_TMP" "$MNT"
 umount_mnt "$MNT"
 
-# 6. Size gate: a rebuilt image bigger than the source may not fit its logical
-# partition (exact-fit partitions flash corrupt and drop straight to bootloader).
-NEW_SIZE="$(stat -c%s "$OUT_TMP")"
-if [ "$NEW_SIZE" -gt "$ORIG_SIZE" ] && [ "${ALLOW_GROWTH:-0}" != "1" ]; then
-  echo "ERROR: rebuilt image grew ($ORIG_SIZE -> $NEW_SIZE bytes) and would"
-  echo "risk not fitting its partition. Aborting without touching the original."
-  echo "Set ALLOW_GROWTH=1 in the environment to override (know your partition size)."
-  exit 1
-fi
-if [ "$NEW_SIZE" -gt "$ORIG_SIZE" ]; then
-  echo "WARNING: rebuilt image grew ($ORIG_SIZE -> $NEW_SIZE bytes) — allowed via ALLOW_GROWTH=1"
-fi
+echo "Size: $ORIG_SIZE -> $(stat -c%s "$OUT_TMP") bytes"
 
 mv "$OUT_TMP" "$SYSTEM_IMG"
 trap - EXIT

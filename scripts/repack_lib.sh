@@ -168,7 +168,6 @@ snapshot_label() {
   awk -F'\t' -v want="$rel" '$1 == want { print $5; found=1; exit } END { if (!found) exit 1 }' "$snap"
 }
 
-# verify_repack <new_img> <orig_mount_dir> [ignore_prefix...]
 # Mounts new_img and requires: zero unreadable inodes, zero metadata diffs
 # (mode/uid/gid/label, symlinks excluded) outside the given ignore prefixes.
 # Returns non-zero (and prints diffs) on any mismatch.

@@ -49,6 +49,10 @@ on:
         required: true
         type: boolean
         default: true
+        required: true
+        default: "923561984"
+        required: true
+        default: "1888702464"
 
 permissions:
   contents: write   # required so GITHUB_TOKEN can create a release + upload assets
@@ -127,11 +131,6 @@ jobs:
 
       - name: Patch product.img (headphone jack overlay)
         if: ${{ inputs.apply_headphone_jack_fix }}
-        # The overlay APK grows product.img slightly; ALLOW_GROWTH=1 permits it
-        # (fails safe by default — only enable if you know your product partition
-        # has the slack, and always verify the size in the step log).
-        env:
-          ALLOW_GROWTH: 1
         run: |
           scripts/patch_product.sh \
             --product-img work/result/product.img \
@@ -139,10 +138,6 @@ jobs:
 
       - name: Patch product.img (Smart 8 display configs)
         if: ${{ inputs.apply_display_config_fix }}
-        # The 3 XMLs grow product.img by a few KB; ALLOW_GROWTH=1 permits it
-        # (same reasoning as the overlay step above).
-        env:
-          ALLOW_GROWTH: 1
         run: |
           scripts/patch_display.sh \
             --product-img work/result/product.img

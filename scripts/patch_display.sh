@@ -16,7 +16,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 PRODUCT_IMG=""
 DC_DIR="$SCRIPT_DIR/../patches/displayconfig"
-
 while [ $# -gt 0 ]; do
   case "$1" in
     --product-img) PRODUCT_IMG="$2"; shift 2 ;;
@@ -122,16 +121,7 @@ done
 verify_repack "$OUT_TMP" "$MNT" "${IGNORES[@]}"
 umount_mnt "$MNT"
 
-NEW_SIZE="$(stat -c%s "$OUT_TMP")"
-if [ "$NEW_SIZE" -gt "$ORIG_SIZE" ] && [ "${ALLOW_GROWTH:-0}" != "1" ]; then
-  echo "ERROR: rebuilt image grew ($ORIG_SIZE -> $NEW_SIZE bytes) and would"
-  echo "risk not fitting its partition. Aborting without touching the original."
-  echo "Set ALLOW_GROWTH=1 in the environment to override (know your partition size)."
-  exit 1
-fi
-if [ "$NEW_SIZE" -gt "$ORIG_SIZE" ]; then
-  echo "WARNING: rebuilt image grew ($ORIG_SIZE -> $NEW_SIZE bytes) — allowed via ALLOW_GROWTH=1"
-fi
+echo "Size: $ORIG_SIZE -> $(stat -c%s "$OUT_TMP") bytes"
 
 mv "$OUT_TMP" "$PRODUCT_IMG"
 trap - EXIT

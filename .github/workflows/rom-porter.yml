@@ -162,6 +162,12 @@ jobs:
             echo "donor_android=unknown" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Zip partitions and upload to GoFile
+        run: |
+          ZIP_NAME="port-${{ github.run_number }}-system-system_ext-product.zip"
+          (cd work/release_assets && zip "$ZIP_NAME" system.img system_ext.img product.img checksums.sha256)
+          scripts/upload_gofile.sh "work/release_assets/$ZIP_NAME"
+
       - name: Set release tag
         id: tag
         run: |

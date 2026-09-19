@@ -49,10 +49,6 @@ on:
         required: true
         type: boolean
         default: true
-        required: true
-        default: "923561984"
-        required: true
-        default: "1888702464"
 
 permissions:
   contents: write   # required so GITHUB_TOKEN can create a release + upload assets

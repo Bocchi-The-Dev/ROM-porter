@@ -152,6 +152,15 @@ jobs:
           cp work/result/product.img work/release_assets/
           sha256sum work/release_assets/*.img > work/release_assets/checksums.sha256
           ls -la work/release_assets
+          if [ -f work/result/donor-info.env ]; then
+            # shellcheck disable=SC1091
+            . ./work/result/donor-info.env
+            echo "donor_device=${DONOR_DEVICE:-unknown}" >> "$GITHUB_OUTPUT"
+            echo "donor_android=${DONOR_ANDROID:-unknown}" >> "$GITHUB_OUTPUT"
+          else
+            echo "donor_device=unknown" >> "$GITHUB_OUTPUT"
+            echo "donor_android=unknown" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set release tag
         id: tag
@@ -167,6 +176,8 @@ jobs:
             Automated donor-partition extraction (no super.img rebuild — vendor/odm/
             vendor_dlkm and everything else on the device stays completely untouched).
 
+            - Donor device: `${{ steps.assets.outputs.donor_device }}`
+            - Donor Android version: `${{ steps.assets.outputs.donor_android }}`
             - Transsion anti-crack patch on system.img: `${{ inputs.patch_transsion_anticrack }}`
             - Headphone jack fix (product/overlay): `${{ inputs.apply_headphone_jack_fix }}`
             - Fix Brightness and Lag (system.prop -> build.prop): `${{ inputs.apply_brightness_lag_fix }}`

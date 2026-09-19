@@ -77,6 +77,26 @@ if $SUDO test -f "$BUILD_PROP"; then
     -e 's/^ro\.force\.debuggable=0$/ro.force.debuggable=1/' \
     "$BUILD_PROP"
   echo "Patched build.prop at $BUILD_PROP"
+
+  # Record donor identity for the release notes (device + Android version).
+  # Written next to the image as donor-info.env: DONOR_DEVICE, DONOR_ANDROID.
+  DONOR_INFO_FILE="$(dirname "$SYSTEM_IMG")/donor-info.env"
+  DONOR_DEVICE="$($SUDO grep -m1 -E '^ro\.product\.model=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
+  if [ -z "$DONOR_DEVICE" ]; then
+    DONOR_DEVICE="$($SUDO grep -m1 -E '^ro\.product\.device=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
+  fi
+  if [ -z "$DONOR_DEVICE" ]; then
+    DONOR_DEVICE="$($SUDO grep -m1 -E '^ro\.product\.name=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
+  fi
+  DONOR_ANDROID="$($SUDO grep -m1 -E '^ro\.build\.version\.release=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
+  if [ -z "$DONOR_ANDROID" ]; then
+    DONOR_ANDROID="$($SUDO grep -m1 -E '^ro\.build\.version\.sdk=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
+  fi
+  {
+    echo "DONOR_DEVICE=${DONOR_DEVICE:-unknown}"
+    echo "DONOR_ANDROID=${DONOR_ANDROID:-unknown}"
+  } > "$DONOR_INFO_FILE"
+  echo "Donor: ${DONOR_DEVICE:-unknown} / Android ${DONOR_ANDROID:-unknown}"
 else
   echo "WARNING: build.prop not found — skipping this patch"
 fi
@@ -122,17 +142,21 @@ if [ "$TRANSSION_ANTICRACK" = "true" ]; then
       echo "No vfy_boot references in $INIT_RC — nothing to remove (expected on donors like A13 TranssionOS)"
     fi
     if ! $SUDO grep -q "Force SELinux Permissive" "$INIT_RC"; then
-      $SUDO awk '
-        { print }
-        /BSP:add tran verify para NFRFP-22376 by wang.qin 20231228 end/ {
-          print ""
-          print "on early-init"
-          print "    # Force SELinux Permissive"
-          print "    write /sys/fs/selinux/enforce 0"
-          print "    setenforce 0"
-          print "    setprop ro.boot.selinux permissive"
-        }
-      ' "$INIT_RC" > "$WORK/init.rc.tmp" && $SUDO mv "$WORK/init.rc.tmp" "$INIT_RC"
+      if $SUDO grep -q "BSP:add tran verify para NFRFP-22376 by wang.qin 20231228 end" "$INIT_RC"; then
+        $SUDO awk '
+          { print }
+          /BSP:add tran verify para NFRFP-22376 by wang.qin 20231228 end/ {
+            print ""
+            print "on early-init"
+            print "    # Force SELinux Permissive"
+            print "    write /sys/fs/selinux/enforce 0"
+            print "    setenforce 0"
+            print "    setprop ro.boot.selinux permissive"
+          }
+        ' "$INIT_RC" > "$WORK/init.rc.tmp" && $SUDO mv "$WORK/init.rc.tmp" "$INIT_RC"
+      else
+        echo "WARNING: BSP anti-crack marker not found in $INIT_RC — permissive block NOT inserted (donor may not need it, or uses a different marker)"
+      fi
     fi
     echo "Patched Transsion anti-crack block in $INIT_RC"
   else

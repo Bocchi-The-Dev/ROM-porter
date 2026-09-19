@@ -78,14 +78,19 @@ PYEOF
 }
 
 # stage_metadata <tree_dir> <snapshot_tsv>
-# Applies recorded uid/gid/mode/label onto an extracted tree. Symlinks are
-# labeled but never chmodded (kernel ignores symlink perms anyway).
+# Applies recorded uid/gid/mode/label onto an extracted tree, then RE-READS
+# everything and fails loudly on any mismatch. This is the fs_config equivalent:
+# even if extraction or patching mangled ownership/modes (wrong umask, sed -i
+# recreating files as root, stray chown), the image is always built with the
+# source image's exact permissions — never whatever the tree happens to have.
+# Symlinks are labeled but never chmodded (kernel ignores symlink perms anyway).
 stage_metadata() {
   local tree="$1" snap="$2"
   $SUDO python3 - "$tree" "$snap" << 'PYEOF'
 import os, stat, sys
 tree, snap = sys.argv[1], sys.argv[2]
-n = 0
+errors = []
+applied = 0
 for line in open(snap):
     line = line.rstrip("\n")
     if not line:
@@ -99,19 +104,44 @@ for line in open(snap):
     try:
         os.lchown(p, int(uid), int(gid))
     except OSError as e:
-        print("chown fail: %s: %s" % (rel, e))
+        errors.append("chown fail: %s: %s" % (rel, e))
+        continue
     if not stat.S_ISLNK(st.st_mode):
         try:
             os.chmod(p, int(mode, 8))
         except OSError as e:
-            print("chmod fail: %s: %s" % (rel, e))
+            errors.append("chmod fail: %s: %s" % (rel, e))
+            continue
     if lab != "-":
         try:
             os.setxattr(p, "security.selinux", lab.encode(), follow_symlinks=False)
         except OSError as e:
-            print("label fail: %s: %s" % (rel, e))
-    n += 1
-print("staged metadata for %d paths" % n)
+            errors.append("label fail: %s: %s" % (rel, e))
+            continue
+    applied += 1
+# Enforcement pass: re-read and fail on ANY remaining mismatch, so a broken
+# tree can never silently bake wrong permissions into the image.
+bad = 0
+for line in open(snap):
+    line = line.rstrip("\n")
+    if not line:
+        continue
+    rel, uid, gid, mode, lab = line.split("\t")
+    p = os.path.join(tree, rel)
+    try:
+        st = os.lstat(p)
+    except OSError:
+        continue
+    if (st.st_uid, st.st_gid) != (int(uid), int(gid)):
+        errors.append("owner mismatch after stage: %s" % rel)
+        bad += 1
+    if not stat.S_ISLNK(st.st_mode) and stat.S_IMODE(st.st_mode) != int(mode, 8):
+        errors.append("mode mismatch after stage: %s" % rel)
+        bad += 1
+print("staged metadata for %d paths (%d error(s))" % (applied, len(errors)))
+for e in errors[:10]:
+    print("STAGE-ERROR:", e)
+sys.exit(1 if errors else 0)
 PYEOF
 }
 

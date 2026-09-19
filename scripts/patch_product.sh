@@ -67,7 +67,12 @@ echo "Product root: $PROD_BASE"
 
 # 3. Add the overlay APK (+x perms not needed for APKs; label it like neighbors).
 OVERLAY_DIR="$PROD_BASE/overlay"
-$SUDO mkdir -p "$OVERLAY_DIR"
+if ! $SUDO test -d "$OVERLAY_DIR"; then
+  # New dir: deterministic attrs (matches stock Smart 8 layout).
+  $SUDO mkdir -p "$OVERLAY_DIR"
+  $SUDO chown 0:0 "$OVERLAY_DIR"
+  $SUDO chmod 0755 "$OVERLAY_DIR"
+fi
 APK_NAME="$(basename "$OVERLAY_APK")"
 $SUDO cp "$OVERLAY_APK" "$OVERLAY_DIR/$APK_NAME"
 $SUDO chmod 0644 "$OVERLAY_DIR/$APK_NAME"
@@ -92,7 +97,15 @@ echo "Repacked -> temp image ($(du -h "$OUT_TMP" | cut -f1))"
 # 5. Verify (the newly added APK is expected to differ — ignore just it).
 $SUDO fsck.erofs "$OUT_TMP" > /dev/null
 APK_REL="${OVERLAY_DIR#$PROD_EXTRACT/}/$APK_NAME"
-verify_repack "$OUT_TMP" "$MNT" "$APK_REL"
+IGNORES=("$APK_REL")
+# Also ignore the overlay dir itself, but only when this patch created it —
+# pre-existing dirs (and their other contents) are still verified file-by-file.
+for D in overlay product/overlay; do
+  if ! $SUDO test -e "$MNT/$D"; then
+    IGNORES+=("$D")
+  fi
+done
+verify_repack "$OUT_TMP" "$MNT" "${IGNORES[@]}"
 umount_mnt "$MNT"
 
 # 6. Size gate (see patch_system.sh for why).

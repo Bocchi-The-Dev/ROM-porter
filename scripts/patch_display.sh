@@ -64,7 +64,12 @@ fi
 echo "Product root: $PROD_BASE"
 
 DC_DST="$PROD_BASE/etc/displayconfig"
-$SUDO mkdir -p "$DC_DST"
+if ! $SUDO test -d "$DC_DST"; then
+  # New dir: deterministic attrs (matches stock Smart 8 layout).
+  $SUDO mkdir -p "$DC_DST"
+  $SUDO chown 0:0 "$DC_DST"
+  $SUDO chmod 0755 "$DC_DST"
+fi
 
 # Reference file for owner/mode/label: prefer an existing displayconfig XML so
 # the new files blend in exactly; fall back to stock Smart 8 values otherwise.

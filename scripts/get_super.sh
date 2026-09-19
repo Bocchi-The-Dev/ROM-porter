@@ -23,7 +23,6 @@ run_pacextractor() {
   local pac_name
   pac_name="$(basename "$pac_file")"
   local pac_out="$pac_workdir/out"
-  mkdir -p "$pac_out"
 
   local repo_root
   repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

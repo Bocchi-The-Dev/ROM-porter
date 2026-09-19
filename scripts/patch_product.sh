@@ -100,8 +100,7 @@ echo "Copied $APK_NAME into $OVERLAY_DIR (Headphone jack fix.)"
 # 4. Re-apply recorded owners/modes/labels, then rebuild to a TEMP file.
 # (The new APK keeps the owner/mode/label set above.)
 stage_metadata "$PROD_EXTRACT" "$META_TSV"
-# See patch_system.sh for why -E legacy-compress is here — same kernel-compat reasoning.
-$SUDO mkfs.erofs --quiet -E legacy-compress -zlz4hc,9 -T 0 -U "$ORIG_UUID" \
+$SUDO mkfs.erofs --quiet -zlz4hc -T 0 -U "$ORIG_UUID" \
   --mount-point="/product" "$OUT_TMP" "$PROD_EXTRACT"
 echo "Repacked -> temp image ($(du -h "$OUT_TMP" | cut -f1))"
 

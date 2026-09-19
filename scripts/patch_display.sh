@@ -98,7 +98,7 @@ for SRC in "$DC_DIR"/*.xml; do
 done
 
 stage_metadata "$PROD_EXTRACT" "$META_TSV"
-$SUDO mkfs.erofs --quiet -E legacy-compress -zlz4hc,9 -T 0 -U "$ORIG_UUID" \
+$SUDO mkfs.erofs --quiet -zlz4hc -T 0 -U "$ORIG_UUID" \
   --mount-point="/product" "$OUT_TMP" "$PROD_EXTRACT"
 echo "Repacked -> temp image ($(du -h "$OUT_TMP" | cut -f1))"
 

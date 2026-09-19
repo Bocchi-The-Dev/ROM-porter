@@ -83,6 +83,9 @@ if $SUDO test -f "$BUILD_PROP"; then
   DONOR_INFO_FILE="$(dirname "$SYSTEM_IMG")/donor-info.env"
   DONOR_DEVICE="$($SUDO grep -m1 -E '^ro\.product\.model=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
   if [ -z "$DONOR_DEVICE" ]; then
+    DONOR_DEVICE="$($SUDO grep -m1 -E '^ro\.product\.system\.model=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
+  fi
+  if [ -z "$DONOR_DEVICE" ]; then
     DONOR_DEVICE="$($SUDO grep -m1 -E '^ro\.product\.device=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
   fi
   if [ -z "$DONOR_DEVICE" ]; then
@@ -199,12 +202,7 @@ fi
 # 4. Re-apply recorded owners/modes/labels, then rebuild (to a TEMP file —
 # never delete the original before the replacement is verified).
 stage_metadata "$SYS_EXTRACT" "$META_TSV"
-# -E legacy-compress: forces the older on-disk EROFS layout (no "decompression
-# in-place"/"compacted indexes", which need kernel >= 5.3). Unisoc/Transsion
-# devices often run older forked kernels, and EROFS deliberately refuses to
-# mount images with feature flags it doesn't recognize — this is the fix for
-# "device never reaches bootanim" when that's the actual cause.
-$SUDO mkfs.erofs --quiet -E legacy-compress -zlz4hc,9 -T 0 -U "$ORIG_UUID" \
+$SUDO mkfs.erofs --quiet -zlz4hc -T 0 -U "$ORIG_UUID" \
   --mount-point="/system" "$OUT_TMP" "$SYS_EXTRACT"
 echo "Repacked -> temp image ($(du -h "$OUT_TMP" | cut -f1))"
 

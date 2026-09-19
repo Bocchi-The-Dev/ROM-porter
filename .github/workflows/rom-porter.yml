@@ -139,6 +139,10 @@ jobs:
 
       - name: Patch product.img (Smart 8 display configs)
         if: ${{ inputs.apply_display_config_fix }}
+        # The 3 XMLs grow product.img by a few KB; ALLOW_GROWTH=1 permits it
+        # (same reasoning as the overlay step above).
+        env:
+          ALLOW_GROWTH: 1
         run: |
           scripts/patch_display.sh \
             --product-img work/result/product.img

@@ -76,13 +76,24 @@ fi
 APK_NAME="$(basename "$OVERLAY_APK")"
 $SUDO cp "$OVERLAY_APK" "$OVERLAY_DIR/$APK_NAME"
 $SUDO chmod 0644 "$OVERLAY_DIR/$APK_NAME"
-REF_APK="$($SUDO find "$OVERLAY_DIR" -maxdepth 1 -name '*.apk' ! -name "$APK_NAME" | head -n1 || true)"
-if [ -n "$REF_APK" ]; then
-  label_new_file "$OVERLAY_DIR/$APK_NAME" "$REF_APK"
+# Label it like a neighboring APK, using the snapshot (ground truth from the
+# source image) — the extracted tree itself may carry no xattrs.
+REF_APK_TREE="$($SUDO find "$OVERLAY_DIR" -maxdepth 1 -name '*.apk' ! -name "$APK_NAME" | head -n1 || true)"
+REF_LAB=""
+if [ -n "$REF_APK_TREE" ]; then
+  REF_LAB="$(snapshot_label "${REF_APK_TREE#$PROD_EXTRACT/}" "$META_TSV" || true)"
+fi
+if [ -n "$REF_LAB" ] && [ "$REF_LAB" != "-" ]; then
+  $SUDO setfattr -n security.selinux -v "$REF_LAB" "$OVERLAY_DIR/$APK_NAME"
 else
-  # No sibling APKs to copy the label from — fall back to the overlay dir label.
-  DLBL="$($SUDO getfattr -n security.selinux --only-values "$OVERLAY_DIR" 2>/dev/null || echo u:object_r:system_file:s0)"
-  $SUDO setfattr -n security.selinux -v "$DLBL" "$OVERLAY_DIR/$APK_NAME"
+  # No labeled sibling — fall back to the overlay dir's own recorded label.
+  OVERLAY_REL="${OVERLAY_DIR#$PROD_EXTRACT/}"
+  DLAB="$(snapshot_label "$OVERLAY_REL" "$META_TSV" || true)"
+  if [ -z "$DLAB" ] || [ "$DLAB" = "-" ]; then
+    echo "WARNING: no usable label found for overlay content; defaulting new file to system_file"
+    DLAB="u:object_r:system_file:s0"
+  fi
+  $SUDO setfattr -n security.selinux -v "$DLAB" "$OVERLAY_DIR/$APK_NAME"
 fi
 echo "Copied $APK_NAME into $OVERLAY_DIR (Headphone jack fix.)"
 

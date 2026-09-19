@@ -71,24 +71,29 @@ if ! $SUDO test -d "$DC_DST"; then
   $SUDO chmod 0755 "$DC_DST"
 fi
 
-# Reference file for owner/mode/label: prefer an existing displayconfig XML so
-# the new files blend in exactly; fall back to stock Smart 8 values otherwise.
-REF_XML="$($SUDO find "$DC_DST" -maxdepth 1 -name '*.xml' | head -n1 || true)"
+# Reference XML for owner/mode/label: prefer an existing displayconfig XML so
+# the new files blend in exactly. Values come from the snapshot (ground truth
+# from the source image), never from the extracted tree. Fallback is the stock
+# Smart 8 attributes (verified on-device): 0:0/0644 system_file.
+REF_XML_TREE="$($SUDO find "$DC_DST" -maxdepth 1 -name '*.xml' | head -n1 || true)"
+REF_UID=0; REF_GID=0; REF_MODE=0644; REF_LAB="u:object_r:system_file:s0"
+if [ -n "$REF_XML_TREE" ]; then
+  REF_REL="${REF_XML_TREE#$PROD_EXTRACT/}"
+  REF_REC="$(awk -F'\t' -v want="$REF_REL" '$1 == want { print $2, $3, $4, $5; exit }' "$META_TSV" || true)"
+  if [ -n "$REF_REC" ]; then
+    read -r REF_UID REF_GID REF_MODE REF_LAB <<< "$REF_REC"
+    if [ "$REF_LAB" = "-" ]; then
+      REF_LAB="u:object_r:system_file:s0"
+    fi
+  fi
+fi
 for SRC in "$DC_DIR"/*.xml; do
   [ -f "$SRC" ] || continue
   DST="$DC_DST/$(basename "$SRC")"
   $SUDO cp "$SRC" "$DST"
-  if [ -n "$REF_XML" ] && [ "$DST" != "$REF_XML" ]; then
-    $SUDO chown --reference="$REF_XML" "$DST"
-    $SUDO chmod --reference="$REF_XML" "$DST"
-    label_new_file "$DST" "$REF_XML"
-  else
-    # Stock Smart 8 attributes (verified on-device): 0644 root:root system_file.
-    $SUDO chown 0:0 "$DST"
-    $SUDO chmod 0644 "$DST"
-    $SUDO setfattr -n security.selinux -v "u:object_r:system_file:s0" "$DST" 2>/dev/null || \
-      label_new_file "$DST" "$DC_DST"
-  fi
+  $SUDO chown "$REF_UID:$REF_GID" "$DST"
+  $SUDO chmod "$REF_MODE" "$DST"
+  $SUDO setfattr -n security.selinux -v "$REF_LAB" "$DST"
   echo "Installed $(basename "$SRC")"
 done
 

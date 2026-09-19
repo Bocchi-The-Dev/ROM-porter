@@ -158,6 +158,16 @@ label_new_file() {
   $SUDO setfattr -n security.selinux -v "$lab" "$dst"
 }
 
+# snapshot_label <mount_relative_path> <snapshot_tsv>
+# Prints the SELinux label recorded for a path at snapshot time (i.e. the
+# ground-truth label from the source image). Prefer this over reading labels
+# off the extracted tree: extraction does not reliably restore xattrs, so a
+# tree-side lookup can come back empty even when the source file is labeled.
+snapshot_label() {
+  local rel="$1" snap="$2"
+  awk -F'\t' -v want="$rel" '$1 == want { print $5; found=1; exit } END { if (!found) exit 1 }' "$snap"
+}
+
 # verify_repack <new_img> <orig_mount_dir> [ignore_prefix...]
 # Mounts new_img and requires: zero unreadable inodes, zero metadata diffs
 # (mode/uid/gid/label, symlinks excluded) outside the given ignore prefixes.

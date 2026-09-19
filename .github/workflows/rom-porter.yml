@@ -158,10 +158,15 @@ jobs:
           fi
 
       - name: Zip partitions and upload to GoFile
+        id: gofile
         run: |
           ZIP_NAME="port-${{ github.run_number }}-system-system_ext-product.zip"
           (cd work/release_assets && zip "$ZIP_NAME" system.img system_ext.img product.img checksums.sha256)
-          scripts/upload_gofile.sh "work/release_assets/$ZIP_NAME"
+          LINK="$(scripts/upload_gofile.sh "work/release_assets/$ZIP_NAME" | grep -oE 'https://gofile.io/d/[A-Za-z0-9]+' | head -n1 || true)"
+          if [ -z "$LINK" ]; then
+            LINK="(upload failed — see run log)"
+          fi
+          echo "gofile_url=$LINK" >> "$GITHUB_OUTPUT"
 
       - name: Set release tag
         id: tag
@@ -179,6 +184,7 @@ jobs:
 
             - Donor device: `${{ steps.assets.outputs.donor_device }}`
             - Donor Android version: `${{ steps.assets.outputs.donor_android }}`
+            - GoFile mirror: `${{ steps.gofile.outputs.gofile_url }}`
             - Transsion anti-crack patch on system.img: `${{ inputs.patch_transsion_anticrack }}`
             - Headphone jack fix (product/overlay): `${{ inputs.apply_headphone_jack_fix }}`
             - Fix Brightness and Lag (system.prop -> build.prop): `${{ inputs.apply_brightness_lag_fix }}`

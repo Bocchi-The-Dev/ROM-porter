@@ -12,8 +12,17 @@ This tool is VIBECODED i'm not a dev. and it's a **WORK IN PROGRESS**
 `target_rom_type` — what the download URL points to:
 - `super.img` / `super.bin` — raw or sparse super partition (sparse auto-converted)
 - `pac` / `pac.zip` — Spreadtrum PAC firmware (or zip containing the .pac)
-- `ota` — full OTA zip: A/B `payload.bin` (via payload-dumper-go, fetched at
-  runtime) or a zip containing `super.img` directly
+- `ota` — FULL OTA zip only: A/B `payload.bin` (via payload-dumper-go, fetched at
+  runtime) or a zip containing `super.img` directly. Incremental/delta OTAs
+  (tens of MB, `pre-build` in `META-INF/com/android/metadata`, every payload
+  partition marked `delta`) are rejected with a clear error unless you also
+  supply `base_ota_url`.
+
+`base_ota_url` (optional, OTA+deltas only) — direct URL for the BASE full OTA
+that the incremental was built against (the exact build named in the delta's
+`pre-build` metadata field). The delta is applied on top of it via
+`payload-dumper-go -old`. If your OTA is ~68 MB while product alone is ~1.8 GB,
+it is a delta: either find the full OTA (recommended) or supply its base here.
 
 ## What it does to the donor partitions
 - `patch_system.sh`: debuggable props, optional Transsion anti-crack init.rc

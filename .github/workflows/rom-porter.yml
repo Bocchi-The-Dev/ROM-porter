@@ -29,6 +29,11 @@ on:
           - pac.zip
           - ota
         default: super.img
+      base_ota_url:
+        description: "Optional: direct URL for the BASE full OTA (required only if target_rom_url is an incremental/delta OTA)"
+        required: false
+        type: string
+        default: ""
       patch_transsion_anticrack:
         description: "Remove Transsion anti-crack block + force SELinux permissive on system.img (Itel/Infinix/Techno only)"
         required: true
@@ -92,6 +97,19 @@ jobs:
         run: |
           scripts/download_input.sh "${{ inputs.target_rom_url }}" work/target_raw "${{ inputs.target_rom_type }}"
 
+      - name: Cache base FULL OTA (delta only)
+        if: inputs.target_rom_type == 'ota' && inputs.base_ota_url != ''
+        id: cache-base
+        uses: actions/cache@v4
+        with:
+          path: work/base_raw
+          key: base-rom-ota-${{ inputs.base_ota_url }}
+
+      - name: Download base FULL OTA (delta only)
+        if: inputs.target_rom_type == 'ota' && inputs.base_ota_url != '' && steps.cache-base.outputs.cache-hit != 'true'
+        run: |
+          scripts/download_input.sh "${{ inputs.base_ota_url }}" work/base_raw "ota"
+
       - name: Extract target -> super.img
         if: inputs.target_rom_type != 'ota'
         run: |
@@ -101,7 +119,13 @@ jobs:
         if: inputs.target_rom_type == 'ota'
         run: |
           OTA_ZIP="$(find work/target_raw -maxdepth 1 -type f -name 'input.zip' | head -n1)"
-          scripts/extract_ota.sh "$OTA_ZIP" work/result
+          BASE_ZIP="$(find work/base_raw -maxdepth 1 -type f -name 'input.zip' 2>/dev/null | head -n1 || true)"
+          if [ "${{ inputs.base_ota_url }}" != "" ] && [ -z "$BASE_ZIP" ]; then
+            echo "ERROR: base_ota_url was given but work/base_raw/input.zip is missing."
+            echo "The 'Download base FULL OTA' step was probably skipped (cache miss handling)."
+            exit 1
+          fi
+          scripts/extract_ota.sh "$OTA_ZIP" work/result "$BASE_ZIP"
 
       - name: lpunpack target super.img
         if: inputs.target_rom_type != 'ota'

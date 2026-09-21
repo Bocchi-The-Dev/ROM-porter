@@ -56,6 +56,25 @@ drive_download() {
   echo "Google Drive link detected — single-connection curl with scan-warning bypass"
   curl -L --fail --retry 3 -c "$cook" -o "$out" "$url"
   if is_html_file "$out"; then
+    if grep -qi 'Quota exceeded' "$out"; then
+      echo "ERROR: Google Drive quota exceeded for this file (too many recent"
+      echo "downloads — Drive resets it after ~24h). This is a Drive-side limit,"
+      echo "not a script bug. Workarounds, fastest first:"
+      local fid
+      fid="$(echo "$1" | grep -oE '[?&]id=[^&]+' | head -n1 | cut -d= -f2 || true)"
+      if [ -n "$fid" ]; then
+        echo "  1) Open https://drive.google.com/file/d/${fid}/view in a browser,"
+        echo "     'Add shortcut to Drive', copy it inside your own Drive (a copy"
+        echo "     gets a fresh quota), share the copy, and use its link."
+      else
+        echo "  1) Copy the file inside your own Google Drive (a copy gets a"
+        echo "     fresh quota), share the copy, and use its link."
+      fi
+      echo "  2) Wait ~24h and re-run — the quota resets on its own."
+      echo "  3) Use a different mirror for the same build."
+      rm -f "$cook"
+      return 1
+    fi
     echo "Drive returned an interstitial page — extracting token and retrying..."
     local uuid
     uuid="$(grep -oE 'name="uuid" value="[^"]+"' "$out" | head -n1 | sed -E 's/.*value="([^"]+)".*/\1/' || true)"

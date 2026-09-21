@@ -208,22 +208,24 @@ jobs:
 
             - Donor device: `${{ steps.assets.outputs.donor_device }}`
             - Donor Android version: `${{ steps.assets.outputs.donor_android }}`
-            - GoFile mirror: `${{ steps.gofile.outputs.gofile_url }}`
+            - GoFile mirror (images): `${{ steps.gofile.outputs.gofile_url }}`
             - Transsion anti-crack patch on system.img: `${{ inputs.patch_transsion_anticrack }}`
             - Headphone jack fix (product/overlay): `${{ inputs.apply_headphone_jack_fix }}`
             - Fix Brightness and Lag (system.prop -> build.prop): `${{ inputs.apply_brightness_lag_fix }}`
             - Smart 8 display configs (product displayconfig fix): `${{ inputs.apply_display_config_fix }}`
             - Target ROM type: `${{ inputs.target_rom_type }}`
 
+            Images are NOT attached here (the zip exceeds GitHub's 2 GB release-asset
+            limit) — download them from the GoFile mirror above. Only
+            checksums.sha256 is attached; verify it against the downloaded files.
             Flash individually, e.g.:
             ```
             fastboot flash system system.img
             fastboot flash system_ext system_ext.img
             fastboot flash product product.img
             ```
-            Verify checksums.sha256 against the downloaded files before flashing.
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            work/release_assets/*
+            work/release_assets/checksums.sha256

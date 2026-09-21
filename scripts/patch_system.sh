@@ -96,8 +96,11 @@ if $SUDO test -f "$BUILD_PROP"; then
     DONOR_ANDROID="$($SUDO grep -m1 -E '^ro\.build\.version\.sdk=' "$BUILD_PROP" | cut -d= -f2- | tr -d '\r' || true)"
   fi
   {
-    echo "DONOR_DEVICE=${DONOR_DEVICE:-unknown}"
-    echo "DONOR_ANDROID=${DONOR_ANDROID:-unknown}"
+    # %q shell-escapes the values: model names contain spaces ("itel A666L")
+    # and this file is sourced by the workflow — unquoted values break sourcing
+    # with "<model>: command not found" (exit 127, red run after a good port).
+    printf 'DONOR_DEVICE=%q\n' "${DONOR_DEVICE:-unknown}"
+    printf 'DONOR_ANDROID=%q\n' "${DONOR_ANDROID:-unknown}"
   } > "$DONOR_INFO_FILE"
   echo "Donor: ${DONOR_DEVICE:-unknown} / Android ${DONOR_ANDROID:-unknown}"
 else
